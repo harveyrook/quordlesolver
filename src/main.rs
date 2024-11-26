@@ -54,18 +54,16 @@ fn count_chars(_column: usize) {
 struct WordleGame {
     goal_words: WordSet,
     word_set: HashSet<&'static str>,
-
 }
 
 impl WordleGame {
-
     pub fn new() -> Self {
         let mut x = goalwords::GOALWORDS.to_vec();
         let mut y = morewords::MOREWORDS.to_vec();
         x.append(&mut y);
         let mut all: HashSet<&'static str> = HashSet::new();
 
-        for w in x{
+        for w in x {
             all.insert(w);
         }
 
@@ -154,10 +152,11 @@ impl WordleGame {
         let all_words = goalwords::GOALWORDS
             .iter()
             .chain(morewords::MOREWORDS.iter());
-        //let all_words = word_set.iter();
+
         for possible_guess in all_words {
             // Calculate the clue sets and their size.
-            let counted = &self.word_set
+            let counted = &self
+                .word_set
                 .iter()
                 .fold(HashMap::new(), |mut acc, possible_goal| {
                     *acc.entry(WordleGame::compare_words(possible_goal, possible_guess))
@@ -166,7 +165,7 @@ impl WordleGame {
                 });
 
             // Given the clue set, Calculate the Shannon entropy.
-            let fscore: f64 = counted
+            let mut     fscore: f64 = counted
                 .iter()
                 .map(|(_key, value)| {
                     let v_c: f64 = f64::from(*value);
@@ -177,14 +176,16 @@ impl WordleGame {
                 / word_set_count;
 
             // Given a clue set, calculate it's size
-            let score: f64 = counted.len() as f64;
+            let word_count: f64 = counted.len() as f64;
 
-            if (fscore == max_fscore && score > max_score)
-                || (fscore == max_fscore && score == max_score && self.word_set.contains(possible_guess))
+            if (fscore == max_fscore && word_count > max_score)
+                || (fscore == max_fscore
+                    && word_count == max_score
+                    && self.word_set.contains(possible_guess))
                 || (fscore > max_fscore)
             {
                 max_word = possible_guess.to_string();
-                max_score = score;
+                max_score = word_count;
                 max_fscore = fscore;
             }
         }
@@ -193,6 +194,9 @@ impl WordleGame {
             "Guess... {}, {} {} {}",
             max_word, max_score, max_fscore, min_of_max
         );
+
+        if max_score == 1.0 { max_fscore = 10.0 }
+
         (max_fscore, max_word)
     }
 
@@ -310,39 +314,30 @@ impl WordleGame {
 
             let clues: Vec<&str> = clue.split(',').collect();
 
-            quordle[0].remove(&recommend, &clues[0]);
-            quordle[1].remove(&recommend, &clues[1]);
-            quordle[2].remove(&recommend, &clues[2]);
-            quordle[3].remove(&recommend, &clues[3]);
+            for i in 0..=3 {
+                if clues[i].len() > 0 {
+                    quordle[i].remove(&recommend, clues[i]);
+                }
+            }
 
-            let mut max_score: f64;
-            let mut best_word: String;
+            let mut max_score: f64 = 0.0;
+            let mut best_word: String = String::new();
             let mut f_next_score: f64;
-            let mut f_next_word: String;
+            let mut f_next_word: String = String::new();
 
-            ( max_score, best_word ) = quordle[0].score();
+            for i in 0..=3 {
+                if clues[i]. len() > 0 {
+                    (f_next_score, f_next_word) = quordle[i].score();
 
-            ( f_next_score, f_next_word) = quordle[1].score();
-            if f_next_score > max_score{
-                max_score=f_next_score;
-                best_word=f_next_word;
-            }
-
-            ( f_next_score, f_next_word) = quordle[2].score();
-            if f_next_score > max_score{
-                max_score=f_next_score;
-                best_word=f_next_word;
-            }
-
-            ( f_next_score, f_next_word) = quordle[3].score();
-            if f_next_score > max_score{
-                // max_score=f_next_score;
-                best_word=f_next_word;
+                    if f_next_score > max_score {
+                        max_score = f_next_score;
+                        best_word = f_next_word;
+                    }                    
+                }
             }
 
             println!("Recommended: {}", best_word);
             recommend = best_word;
-
         } //loop
 
         //
