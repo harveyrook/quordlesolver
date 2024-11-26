@@ -7,8 +7,6 @@ use std::io;
 mod goalwords;
 mod morewords;
 
-type WordSet = Vec<&'static str>;
-
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
@@ -40,19 +38,10 @@ fn count_chars(_column: usize) {
     count_vec.iter().for_each(|(c, x)| println!("{}:{}", c, x));
 }
 
-// List goal words
-//fn list_goal_words() ->  Iter<'static, &'static str> {
-//    goalwords::GOALWORDS.iter()
-//}
-
-//fn list_all_words() -> Iter<'static, &'static str>{
-//    list_goal_words().chain(morewords::MOREWORDS.iter()).into_iter()
-//}
 
 // Create a list of all wordlewords that may be the goal words
 
 struct WordleGame {
-    goal_words: WordSet,
     word_set: HashSet<&'static str>,
 }
 
@@ -68,36 +57,8 @@ impl WordleGame {
         }
 
         Self {
-            goal_words: (goalwords::GOALWORDS.to_vec()),
             word_set: all,
         }
-    }
-
-    // Create a list of all wordlewords that may be the goal words
-    fn get_goal_words(&self) -> &WordSet {
-        &self.goal_words
-    }
-
-    fn get_relevant_words(guess_set: &WordSet, goal_set: &WordSet) -> WordSet {
-        let mut bloom: Vec<bool> = vec![false; 256];
-
-        for word in goal_set {
-            for c in (*word).chars() {
-                bloom[c as usize] = true;
-            }
-        }
-
-        let mut relevant: WordSet = WordSet::new();
-
-        for word in guess_set {
-            for c in (*word).chars() {
-                if bloom[c as usize] {
-                    relevant.push(word);
-                    break;
-                }
-            }
-        }
-        relevant
     }
 
     // Compare two words, and return how good the guess is relative to the goal.
@@ -165,7 +126,7 @@ impl WordleGame {
                 });
 
             // Given the clue set, Calculate the Shannon entropy.
-            let mut     fscore: f64 = counted
+            let fscore: f64 = counted
                 .iter()
                 .map(|(_key, value)| {
                     let v_c: f64 = f64::from(*value);
@@ -200,12 +161,15 @@ impl WordleGame {
         (max_fscore, max_word)
     }
 
-    fn remove(&mut self, guess: &str, clue: &str) {
+
+    fn remove_static(  word_set: &mut HashSet<&'static str>, guess: &str, clue: &str){
+
+
         let guess_chars: Vec<char> = guess.chars().collect();
         let clue_chars: Vec<char> = clue.chars().collect();
         let mut remove_set = HashSet::new();
 
-        for word in self.word_set.iter() {
+        for word in word_set.iter() {
             let mut word_chars: Vec<char> = word.chars().collect();
             let mut remove = false;
 
@@ -289,9 +253,16 @@ impl WordleGame {
         }
 
         for removeable in &remove_set {
-            self.word_set.remove(removeable);
+            word_set.remove(removeable);
         }
     }
+
+    fn remove(&mut self, guess: &str, clue: &str) {
+        
+        WordleGame::remove_static( &mut self.word_set, guess, clue);
+
+    } // fn remove
+
 
     fn play_quordle() {
         let mut quordle: Vec<WordleGame> = Vec::new();
@@ -323,7 +294,7 @@ impl WordleGame {
             let mut max_score: f64 = 0.0;
             let mut best_word: String = String::new();
             let mut f_next_score: f64;
-            let mut f_next_word: String = String::new();
+            let mut f_next_word;
 
             for i in 0..=3 {
                 if clues[i]. len() > 0 {
@@ -468,19 +439,19 @@ fn main() {
 
 #[test]
 fn it_works() {
-    let s = compare_words("stern", "sueat");
+    let s = WordleGame::compare_words("stern", "sueat");
     assert_eq!(s, String::from("G G Y"));
 
-    let s = compare_words("stern", "clamp");
+    let s = WordleGame::compare_words("stern", "clamp");
     assert_eq!(s, String::from("     "));
 
-    let s = compare_words("stern", "stern");
+    let s = WordleGame::compare_words("stern", "stern");
     assert_eq!(s, String::from("GGGGG"));
 
-    let s = compare_words("stern", "clamp");
+    let s = WordleGame::compare_words("stern", "clamp");
     assert_eq!(s, String::from("     "));
 
-    let s = compare_words("abcde", "edcba");
+    let s = WordleGame::compare_words("abcde", "edcba");
     assert_eq!(s, String::from("YYGYY"));
 }
 
@@ -489,13 +460,13 @@ fn remote_test() {
     let mut a = HashSet::from(["abcde", "abcdf", "abcdg"]);
 
     for word in a.iter() {
-        println!("in {}", word.clone());
+        println!("in {}", word);
     }
 
-    remove(&mut a, "iiiig", "    G");
+    WordleGame::remove_static(&mut a, "iiiig", "    G");
 
     for word in a.iter() {
-        println!("after {}", word.clone());
+        println!("after {}", word);
     }
 
     assert_eq!(a.contains("abcdg"), true);
@@ -506,7 +477,7 @@ fn remote_test() {
 fn y_test() {
     let mut a = HashSet::from(["abcde", "fbcdf", "abcdg"]);
 
-    remove(&mut a, "iifii", "  Y  ");
+    WordleGame::remove_static(&mut a, "iifii", "  Y  ");
 
     assert_eq!(a.contains("fbcdf"), true);
     assert_eq!(a.contains("abcdg"), false);
@@ -516,7 +487,7 @@ fn y_test() {
 fn gy_test() {
     let mut a = HashSet::from(["abcae", "fbcdf", "abadg", "aiiba"]);
 
-    remove(&mut a, "aiiia", "G   Y");
+    WordleGame::remove_static(&mut a, "aiiia", "G   Y");
 
     assert_eq!(a.contains("fbcdf"), false);
     assert_eq!(a.contains("abcae"), true);
@@ -528,7 +499,7 @@ fn gy_test() {
 fn ggg_test() {
     let mut a = HashSet::from(["crack", "cramp"]);
 
-    remove(&mut a, "crack", "GGG  ");
+    WordleGame::remove_static(&mut a, "crack", "GGG  ");
 
     assert_eq!(a.contains("crack"), false);
     assert_eq!(a.contains("cramp"), true);
@@ -536,7 +507,7 @@ fn ggg_test() {
 
 #[test]
 fn soare_await_test() {
-    let a = compare_words("await", "soare");
+    let a = WordleGame::compare_words("await", "soare");
     assert_eq!(a.eq("  G  "), true);
 }
 
@@ -547,7 +518,7 @@ fn soare_await_test2() {
     b.insert("admit");
     b.insert("avail");
 
-    remove(&mut b, "soare", "  Y  ");
+    WordleGame::remove_static(&mut b, "soare", "  Y  ");
     assert_eq!(b.contains("admit"), true);
     assert_eq!(b.contains("await"), false);
 }
@@ -565,8 +536,8 @@ fn big_soare_test() {
             acc
         });
 
-    remove(&mut word_set, "soare", "  Y  ");
+    WordleGame::remove_static(&mut word_set, "soare", "  Y  ");
 
     assert_eq!(word_set.contains("admit"), true);
-    assert_eq!(word_set.contains("await"), false);
+    assert_eq!(word_set.contains ("await"), false);
 }
