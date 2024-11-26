@@ -2,18 +2,12 @@ use clap::Parser;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
-use std::time::SystemTime;
 use std::io;
 
 mod goalwords;
 mod morewords;
 
-type WordSet = Vec<&'static str>; 
-
-struct GuessTree {
-    guess: &'static str,
-    tree: HashMap< String, GuessTree>
-} 
+type WordSet = Vec<&'static str>;
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -58,72 +52,38 @@ fn count_chars(_column: usize) {
 // Create a list of all wordlewords that may be the goal words
 
 struct WordleGame {
-
     goal_words: WordSet,
-    _more_words: WordSet,
-    _all_words: WordSet,
-    prio_words: WordSet
+    word_set: HashSet<&'static str>,
+
 }
 
 impl WordleGame {
 
-
-    fn reorder( z: &mut WordSet, w: &str){
-        let f = z.iter().position(|&a| a.eq(w));
-        let s=z.remove(f.unwrap());
-         z.insert(0, s);
-
-    }
-
     pub fn new() -> Self {
+        let mut x = goalwords::GOALWORDS.to_vec();
+        let mut y = morewords::MOREWORDS.to_vec();
+        x.append(&mut y);
+        let mut all: HashSet<&'static str> = HashSet::new();
 
-        let mut x=goalwords::GOALWORDS.to_vec(); 
-        let mut y=morewords::MOREWORDS.to_vec(); 
-        x.append(& mut y); 
-        let mut z=x.clone();
-
-        WordleGame::reorder(&mut z, "horse");
-        WordleGame::reorder(&mut z, "arise");
-        WordleGame::reorder(&mut z, "crate");
-        WordleGame::reorder(&mut z, "raise");
-        WordleGame::reorder(&mut z, "roate");
-        WordleGame::reorder(&mut z, "trace");
-        WordleGame::reorder(&mut z, "adieu");
-        WordleGame::reorder(&mut z, "slate");
-        WordleGame::reorder(&mut z, "soare");
-
-        Self { 
-            goal_words: (goalwords::GOALWORDS.to_vec()), 
-            _more_words: (morewords::MOREWORDS.to_vec()),
-            _all_words: (x),
-            prio_words: (z)
-
+        for w in x{
+            all.insert(w);
         }
 
+        Self {
+            goal_words: (goalwords::GOALWORDS.to_vec()),
+            word_set: all,
+        }
     }
-
 
     // Create a list of all wordlewords that may be the goal words
     fn get_goal_words(&self) -> &WordSet {
-            &self.goal_words
-        }
+        &self.goal_words
+    }
 
-    // Create a list of all possible wordle words that can be guessed
-    fn _get_all_words(& self) -> &WordSet {
-            &self._all_words
-            }
-
-    // Create a list of all possible wordle words that can be guessed
-    fn get_prio_words(& self) -> &WordSet {
-        &self.prio_words
-        }
-
-    fn get_relevant_words(guess_set: &WordSet,
-                        goal_set: &WordSet) -> WordSet {
-
+    fn get_relevant_words(guess_set: &WordSet, goal_set: &WordSet) -> WordSet {
         let mut bloom: Vec<bool> = vec![false; 256];
 
-        for word in goal_set{
+        for word in goal_set {
             for c in (*word).chars() {
                 bloom[c as usize] = true;
             }
@@ -139,162 +99,8 @@ impl WordleGame {
                 }
             }
         }
-
         relevant
-        
     }
-
-    fn print_guess_tree( node: GuessTree, indent: Option<String>){
-
-        let mut spaces=indent.unwrap_or(" ".into());
-        println!("{}, {}", spaces, node.guess);    
-        spaces.push(' ');
-        for (s, g) in node.tree {
-            println!("{} {}", spaces.clone(), s);
-            Self::print_guess_tree( g, Some(spaces.clone()));
-        }
-
-    }
-
-    fn play_all_wordle(&self) {
-
-        let (_score, guess_tree) = WordleGame::play_wordle_with_sets(
-                1,
-                self.get_prio_words(),
-                self.get_goal_words());
-
-            WordleGame::print_guess_tree(
-            guess_tree.unwrap(),
-            None);
-    }
-
-    fn play_wordle_with_sets( 
-        depth: usize,
-        guesses: &WordSet, 
-        goals: &WordSet)-> (usize, Option<GuessTree>) {
-
-        let mut best_score = 0;
-        let mut best_guess: Option<GuessTree> = None; 
-
-        
-        for guess in guesses {
-
-
-            let (score, guess_tree) = WordleGame::play_wordle_with_word( depth, guess, guesses, goals );
-            if score>best_score {
-
-                best_score = score;
-                best_guess = guess_tree;
-
-                if depth==0 {
-                    println!("{},{}", best_score, guess);
-                }
-            }
-
-
-        }
-
-        (best_score, best_guess)
-
-    }
-
-    fn play_wordle_with_word(
-        depth: usize, 
-        guess: &'static str, 
-        guesses: &WordSet,
-        goals: &WordSet) 
-        -> (usize, Option<GuessTree>){
-
-            // Three cases
-            // 1. The guess is the goal. In that case return a low score
-            // 2. the guess does nothing to split the goal set up-- return MAX Score
-            // 3. The guess splits up the goal set-- recursivly decend.
-
-            let ret_score: usize;
-            let ret_guess_tree: Option<GuessTree>;
-
-            if depth==1 {
-                println!("{:?}: About to Evaluate {} Depth {}", SystemTime::now(), guess, depth);
-            }
-    
-    
-
-            // Case 1. The guess is the goal.
-            if goals.len() == 1{
-                if goals[0].eq(guess){
-                    ret_score = 10;               
-                    ret_guess_tree = Some(GuessTree{ guess, tree: HashMap::new()});    
-                }else{
-                    ret_score = 0;
-                    ret_guess_tree = None;
-                }
-            }else if goals.len() == 2 && (goals[0].eq(guess) || goals[1].eq(guess)){
-                // Case 1.5 There are two possible goals. 50/50 chance we guess right.
-                // Rather than decending into a tree of two, or abanding the search if the tree is 3, we assign a half score--
-                // 50% chance we would get this at the 4th level.
-                if depth == 3 {
-                    ret_score = 5;
-                }else {
-                    ret_score = 10;
-                }            
-                ret_guess_tree = Some(GuessTree{ guess, tree: HashMap::new()});    
-            }else if depth==3 {
-                    ret_score = 0;
-                    ret_guess_tree = None;
-            }else{
-
-                let mut map: HashMap<String,WordSet>  = HashMap::new();
-
-                for possible_goal in goals {
-                    let clue = WordleGame::compare_words(possible_goal, guess);
-
-                    let entry = map.entry(clue).or_default();
-                    entry.push(possible_goal);
-                }
-
-                if map.len() == 1 {
-                    // This word was useless
-                    ret_score=0;
-                    ret_guess_tree = None;
-                }else{
-
-                    let mut this_score: usize=0;
-                    let mut this_guess =  GuessTree{guess, tree: HashMap::new()};
-
-                    for (sub_clue,sub_goals) in map {
-
-                        let relevant_words = &WordleGame::get_relevant_words(guesses, &sub_goals);
-
-                        let (current_score, current_guess_tree) = WordleGame::play_wordle_with_sets(
-                            depth+1,
-                            relevant_words,
-                            &sub_goals
-                            );
-
-                        if let Some(ct) = current_guess_tree {
-                            this_score += current_score;
-                            this_guess.tree.insert(sub_clue,ct);
-                        
-                        }
-
-                    }
-
-                    ret_score=this_score;
-                    ret_guess_tree=Some(this_guess);
-                
-                }
-
-        }
-
-        if depth==1 {
-            println!("{:?}: Evaluated {} Depth{} Score {}", SystemTime::now(), guess, depth, ret_score );
-        }
-
-    
-        (ret_score, ret_guess_tree)
-
-    }
-
 
     // Compare two words, and return how good the guess is relative to the goal.
     // Output is a string of five letters
@@ -336,8 +142,8 @@ impl WordleGame {
         s.iter().collect()
     }
 
-    fn score(word_set: &HashSet<&str>) -> String {
-        let word_set_count: f64 = word_set.len() as f64;
+    fn score(&self) -> (f64, String) {
+        let word_set_count: f64 = self.word_set.len() as f64;
         println!("Word set count: {}", word_set_count);
 
         let mut max_score: f64 = 0.0;
@@ -351,7 +157,7 @@ impl WordleGame {
         //let all_words = word_set.iter();
         for possible_guess in all_words {
             // Calculate the clue sets and their size.
-            let counted = &word_set
+            let counted = &self.word_set
                 .iter()
                 .fold(HashMap::new(), |mut acc, possible_goal| {
                     *acc.entry(WordleGame::compare_words(possible_goal, possible_guess))
@@ -373,70 +179,10 @@ impl WordleGame {
             // Given a clue set, calculate it's size
             let score: f64 = counted.len() as f64;
 
-            // Given a cluse set, calculate the maximum clue size.
-            let _max_clue_size = counted
-                .iter()
-                .map(|(_key, value)| value)
-                .max()
-                .ok_or(Some(0))
-                .unwrap();
-
-            /*
-                    if *max_clue_size < min_of_max {
-                        min_of_max = *max_clue_size;
-                        max_fscore = fscore;
-                        max_word = possible_guess.to_string();
-                    } else if *max_clue_size <= min_of_max && word_set.contains(possible_guess){
-                        max_fscore = fscore;
-                        min_of_max = *max_clue_size;
-                        max_word = possible_guess.to_string();
-                    } else if *max_clue_size == min_of_max &&
-                            fscore > max_fscore {
-
-                        max_fscore = fscore;
-                        min_of_max = *max_clue_size;
-                        max_word = possible_guess.to_string();
-                    }
-
-        */
-            /*
-            if fscore > max_fscore
-                || (fscore == max_fscore && min_of_max > *max_clue_size)
-                || (fscore == max_fscore
-                    && min_of_max == *max_clue_size
-                    && word_set.contains(possible_guess))
+            if (fscore == max_fscore && score > max_score)
+                || (fscore == max_fscore && score == max_score && self.word_set.contains(possible_guess))
+                || (fscore > max_fscore)
             {
-                min_of_max = *max_clue_size;
-                max_word = possible_guess.to_string();
-                max_score = score;
-                max_fscore = fscore;
-            }
-            */
-
-            /*
-            if score > max_score ||
-            (score == max_score && fscore > max_fscore ) ||
-            (score == max_score && fscore == max_fscore && word_set.contains(possible_guess)) {
-                max_word = possible_guess.to_string();
-                max_score = score;
-                max_fscore = fscore;
-            }
-            */
-
-    /* dd
-            if score > max_score ||
-            (score == max_score &&  min_of_max > *max_clue_size ) ||
-            (score == max_score && min_of_max == *max_clue_size && word_set.contains(possible_guess)) {
-                max_word = possible_guess.to_string();
-                max_score = score;
-                max_fscore = fscore;
-                min_of_max = *max_clue_size;
-            }
-
-    */
-            if (fscore == max_fscore && score > max_score) ||
-                (fscore == max_fscore && score == max_score && word_set.contains(possible_guess)) ||
-                (fscore > max_fscore){
                 max_word = possible_guess.to_string();
                 max_score = score;
                 max_fscore = fscore;
@@ -447,15 +193,15 @@ impl WordleGame {
             "Guess... {}, {} {} {}",
             max_word, max_score, max_fscore, min_of_max
         );
-        max_word
+        (max_fscore, max_word)
     }
 
-    fn remove(word_set: &mut HashSet<&str>, guess: &str, clue: &str) {
+    fn remove(&mut self, guess: &str, clue: &str) {
         let guess_chars: Vec<char> = guess.chars().collect();
         let clue_chars: Vec<char> = clue.chars().collect();
         let mut remove_set = HashSet::new();
 
-        for word in word_set.iter() {
+        for word in self.word_set.iter() {
             let mut word_chars: Vec<char> = word.chars().collect();
             let mut remove = false;
 
@@ -477,10 +223,9 @@ impl WordleGame {
             if !remove {
                 for i in 0..5 {
                     if clue_chars[i] == 'Y' {
-
-                        if guess_chars[i]==word_chars[i]{
+                        if guess_chars[i] == word_chars[i] {
                             // This should have been a 'G'
-                            remove=true;
+                            remove = true;
                             break;
                         }
 
@@ -498,10 +243,10 @@ impl WordleGame {
                             if j != i {
                                 word_chars[j] = ' '; // Don't match this letter again.
                             } else {
-                                remove=true; // This clue should have been 'G'
+                                remove = true; // This clue should have been 'G'
                             }
                         } else {
-                            remove=true; // Didn't find the matching letter.
+                            remove = true; // Didn't find the matching letter.
                         }
                     }
 
@@ -540,71 +285,72 @@ impl WordleGame {
         }
 
         for removeable in &remove_set {
-            word_set.remove(removeable);
+            self.word_set.remove(removeable);
         }
     }
 
-    fn play_wordle() {
-        let mut word_set = goalwords::GOALWORDS
-            .iter()
-            .fold(HashSet::<&str>::new(), |mut acc, word| {
-                acc.insert(word);
-                acc
-            });
+    fn play_quordle() {
+        let mut quordle: Vec<WordleGame> = Vec::new();
+        quordle.push(WordleGame::new());
+        quordle.push(WordleGame::new());
+        quordle.push(WordleGame::new());
+        quordle.push(WordleGame::new());
 
+        //
         let mut recommend = String::from("slate");
         println!("Guess... slate");
-        //let mut recommend = WordleGame::score(&word_set);
 
-        while !word_set.is_empty() {
-
+        loop {
             let mut clue = String::new();
 
-            println!("Enter clue...");
+            println!("Enter csv clues...");
             io::stdin()
                 .read_line(&mut clue)
                 .expect("Failed to read line");
 
-            WordleGame::remove(&mut word_set, &recommend, &clue);
+            let clues: Vec<&str> = clue.split(',').collect();
 
-            let count = word_set.len();
-            println!("{} possible words", count);
+            quordle[0].remove(&recommend, &clues[0]);
+            quordle[1].remove(&recommend, &clues[1]);
+            quordle[2].remove(&recommend, &clues[2]);
+            quordle[3].remove(&recommend, &clues[3]);
 
-            if count < 300 {
-                for word in &word_set {
-                    print!("{} ", word);
-                }
-                println!(" ");
+            let mut max_score: f64;
+            let mut best_word: String;
+            let mut f_next_score: f64;
+            let mut f_next_word: String;
+
+            ( max_score, best_word ) = quordle[0].score();
+
+            ( f_next_score, f_next_word) = quordle[1].score();
+            if f_next_score > max_score{
+                max_score=f_next_score;
+                best_word=f_next_word;
             }
 
-            recommend = WordleGame::score(&word_set);
-        }
-    }
+            ( f_next_score, f_next_word) = quordle[2].score();
+            if f_next_score > max_score{
+                max_score=f_next_score;
+                best_word=f_next_word;
+            }
+
+            ( f_next_score, f_next_word) = quordle[3].score();
+            if f_next_score > max_score{
+                // max_score=f_next_score;
+                best_word=f_next_word;
+            }
+
+            println!("Recommended: {}", best_word);
+            recommend = best_word;
+
+        } //loop
+
+        //
+    } //fn play_quordle
 }
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    //let args = Args::parse();
-
-    //if args.count>0 && args.count<6 {
-    //    count_chars( args.count )
-    //}
-    //println!("total up column {0}", args.count );
-
-    //count_chars(args.count);
-    //    let counted = goalwords::GOALWORDS
-    //                    .iter()
-    //                    .fold( HashMap::new(),
-    //                          |mut acc, goal| {*acc.entry(compare_words(goal,"trace")).or_insert(0) += 1; acc } );
-
-    //    let max = counted.iter().map(|(key,value)| value).max();
-
-    //    for (key,value) in counted.iter() {
-
-    //        println!("{} {}", key, value);
-    //    }
-
-    //println!("{}, {}, {}", guess, counted.len(),max.unwrap());
 
     if args[1] == *"map" {
         println!("Words, sets, complex, max");
@@ -612,7 +358,8 @@ fn main() {
             let counted = goalwords::GOALWORDS
                 .iter()
                 .fold(HashMap::new(), |mut acc, goal| {
-                    *acc.entry(WordleGame::compare_words(goal, guess)).or_insert(0) += 1;
+                    *acc.entry(WordleGame::compare_words(goal, guess))
+                        .or_insert(0) += 1;
                     acc
                 });
 
@@ -647,7 +394,8 @@ fn main() {
         let goal_words_count: f64 = goal_words.len() as f64;
         for guess in all_words {
             let counted = goal_words.iter().fold(HashMap::new(), |mut acc, goal| {
-                *acc.entry(WordleGame::compare_words(goal, guess)).or_insert(0) += 1;
+                *acc.entry(WordleGame::compare_words(goal, guess))
+                    .or_insert(0) += 1;
                 acc
             });
 
@@ -667,14 +415,8 @@ fn main() {
     }
 
     if args[1] == *"play" {
-        WordleGame::play_wordle();
+        WordleGame::play_quordle();
     }
-
-    if args[1] == *"all" {
-        let wordle = WordleGame::new();
-        wordle.play_all_wordle();
-    }
-
 
     if args[1] == *"deep" {
         let mut all = HashMap::new();
@@ -799,10 +541,9 @@ fn ggg_test() {
 
 #[test]
 fn soare_await_test() {
-    let a = compare_words("await","soare");
+    let a = compare_words("await", "soare");
     assert_eq!(a.eq("  G  "), true);
 }
-
 
 #[test]
 fn soare_await_test2() {
@@ -811,29 +552,26 @@ fn soare_await_test2() {
     b.insert("admit");
     b.insert("avail");
 
-    remove(&mut b, "soare","  Y  ");
+    remove(&mut b, "soare", "  Y  ");
     assert_eq!(b.contains("admit"), true);
     assert_eq!(b.contains("await"), false);
 }
 
-
 #[test]
 fn big_soare_test() {
-    
     let str_await = String::from("await");
     let str_admit = String::from("admit");
 
     let mut word_set = goalwords::GOALWORDS
         .iter()
-        .skip_while(|x|{ !str_await.eq(*x) && !str_admit.eq(*x)} )
+        .skip_while(|x| !str_await.eq(*x) && !str_admit.eq(*x))
         .fold(HashSet::<&str>::new(), |mut acc, word| {
             acc.insert(word);
             acc
         });
 
-    remove( &mut word_set, "soare","  Y  ");
+    remove(&mut word_set, "soare", "  Y  ");
 
     assert_eq!(word_set.contains("admit"), true);
     assert_eq!(word_set.contains("await"), false);
-
 }

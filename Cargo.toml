@@ -1,5 +1,5 @@
 [package]
-name = "wordlesolver"
+name = "quordlesolver"
 version = "0.1.0"
 edition = "2018"
 
