@@ -40,19 +40,19 @@ fn count_chars(_column: usize) {
 
 
 // Create a list of all wordlewords that may be the goal words
-
 struct WordleGame {
     word_set: HashSet<&'static str>,
 }
 
 impl WordleGame {
     pub fn new() -> Self {
-        let mut x = goalwords::GOALWORDS.to_vec();
-        let mut y = morewords::MOREWORDS.to_vec();
-        x.append(&mut y);
+
         let mut all: HashSet<&'static str> = HashSet::new();
 
-        for w in x {
+        for w in goalwords::GOALWORDS {
+            all.insert(w);
+        }
+        for w in morewords::MOREWORDS {
             all.insert(w);
         }
 
@@ -101,6 +101,8 @@ impl WordleGame {
         s.iter().collect()
     }
 
+
+    // Given a set of possible answer words, return a word that is the best guess to find the correct answer. Return the score for that word as an f64. 
     fn score(&self) -> (f64, String) {
         let word_set_count: f64 = self.word_set.len() as f64;
         println!("Word set count: {}", word_set_count);
@@ -162,6 +164,7 @@ impl WordleGame {
     }
 
 
+    // Given a set of possible answer words. Remove the words that don't match the given guess and it's associated clue. 
     fn remove_static(  word_set: &mut HashSet<&'static str>, guess: &str, clue: &str){
 
 
@@ -257,6 +260,7 @@ impl WordleGame {
         }
     }
 
+    // Wrapper to call remove from a WordleGame object. 
     fn remove(&mut self, guess: &str, clue: &str) {
         
         WordleGame::remove_static( &mut self.word_set, guess, clue);
