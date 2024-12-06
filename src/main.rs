@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::io;
+use std::iter::FromIterator;
 
 mod goalwords;
 mod morewords;
@@ -38,7 +39,6 @@ fn count_chars(_column: usize) {
     count_vec.iter().for_each(|(c, x)| println!("{}:{}", c, x));
 }
 
-
 // Create a list of all wordlewords that may be the goal words
 struct WordleGame {
     word_set: HashSet<&'static str>,
@@ -46,19 +46,17 @@ struct WordleGame {
 
 impl WordleGame {
     pub fn new() -> Self {
-
         let mut all: HashSet<&'static str> = HashSet::new();
 
         for w in goalwords::GOALWORDS {
             all.insert(w);
         }
-        for w in morewords::MOREWORDS {
-            all.insert(w);
-        }
+	
+        //for w in morewords::MOREWORDS {
+        //    all.insert(w);
+        //}
 
-        Self {
-            word_set: all,
-        }
+        Self { word_set: all }
     }
 
     // Compare two words, and return how good the guess is relative to the goal.
@@ -101,8 +99,9 @@ impl WordleGame {
         s.iter().collect()
     }
 
-
-    // Given a set of possible answer words, return a word that is the best guess to find the correct answer. Return the score for that word as an f64. 
+    // Given a set of possible answer words,
+    // return a word that is the best guess to find the correct answer.
+    // Return the score for that word as an f64.
     fn score(&self) -> (f64, String) {
         let word_set_count: f64 = self.word_set.len() as f64;
         println!("Word set count: {}", word_set_count);
@@ -153,21 +152,23 @@ impl WordleGame {
             }
         }
 
+	    let trailer = String::from_iter( self.word_set.iter().take(5).map(|&s| s));
+
         println!(
-            "Guess... {}, {} {} {}",
-            max_word, max_score, max_fscore, min_of_max
+            "Guess... {}, {} {} {} {}",
+            max_word, max_score, max_fscore, min_of_max, trailer
         );
 
-        if max_score == 1.0 { max_fscore = 10.0 }
+        if max_score == 1.0 {
+            max_fscore = 10.0
+        }
 
         (max_fscore, max_word)
     }
 
-
-    // Given a set of possible answer words. Remove the words that don't match the given guess and it's associated clue. 
-    fn remove_static(  word_set: &mut HashSet<&'static str>, guess: &str, clue: &str){
-
-
+    // Given a set of possible answer words.
+    // Remove the words that don't match the given guess and it's associated clue.
+    fn remove_static(word_set: &mut HashSet<&'static str>, guess: &str, clue: &str) {
         let guess_chars: Vec<char> = guess.chars().collect();
         let clue_chars: Vec<char> = clue.chars().collect();
         let mut remove_set = HashSet::new();
@@ -260,13 +261,10 @@ impl WordleGame {
         }
     }
 
-    // Wrapper to call remove from a WordleGame object. 
+    // Wrapper to call remove from a WordleGame object.
     fn remove(&mut self, guess: &str, clue: &str) {
-        
-        WordleGame::remove_static( &mut self.word_set, guess, clue);
-
+        WordleGame::remove_static(&mut self.word_set, guess, clue);
     } // fn remove
-
 
     fn play_quordle() {
         let mut quordle: Vec<WordleGame> = Vec::new();
@@ -287,6 +285,7 @@ impl WordleGame {
                 .read_line(&mut clue)
                 .expect("Failed to read line");
 
+            clue.push_str(",,,,");
             let clues: Vec<&str> = clue.split(',').collect();
 
             for i in 0..=3 {
@@ -301,13 +300,13 @@ impl WordleGame {
             let mut f_next_word;
 
             for i in 0..=3 {
-                if clues[i]. len() > 0 {
+                if clues[i].len() > 0 {
                     (f_next_score, f_next_word) = quordle[i].score();
 
                     if f_next_score > max_score {
                         max_score = f_next_score;
                         best_word = f_next_word;
-                    }                    
+                    }
                 }
             }
 
@@ -320,6 +319,8 @@ impl WordleGame {
 }
 
 fn main() {
+    env::set_var("RUST_BACKTRACE", "1");
+
     let args: Vec<String> = env::args().collect();
 
     if args[1] == *"map" {
@@ -543,5 +544,5 @@ fn big_soare_test() {
     WordleGame::remove_static(&mut word_set, "soare", "  Y  ");
 
     assert_eq!(word_set.contains("admit"), true);
-    assert_eq!(word_set.contains ("await"), false);
+    assert_eq!(word_set.contains("await"), false);
 }
