@@ -1,6 +1,7 @@
+// Refactored Rust Code for Wordle Solver
+
 use clap::Parser;
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::io;
 use std::iter::FromIterator;
@@ -8,25 +9,30 @@ use std::iter::FromIterator;
 mod goalwords;
 mod morewords;
 
+// Command-line arguments structure
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// offset to count
+    /// Offset to count
     #[clap(short, long, default_value_t = 0)]
     count: usize,
 }
 
-#[allow(dead_code)]
+// Utility Functions
 fn print_type_of<T>(_: &T) {
-    println!("{}", std::any::type_name::<T>())
+    println!("{}", std::any::type_name::<T>());
 }
 
-#[allow(dead_code)]
-fn count_chars(_column: usize) {
+fn read_input(prompt: &str) -> String {
+    println!("{}", prompt);
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
+}
+
+fn count_chars() {
     let counted = goalwords::GOALWORDS
         .iter()
-        //.skip(column)
-        //.step_by(5)
         .flat_map(|w| w.chars())
         .filter(|c| c.is_ascii_lowercase())
         .fold(HashMap::with_capacity(26), |mut acc, c| {
@@ -34,515 +40,130 @@ fn count_chars(_column: usize) {
             acc
         });
 
-    let mut count_vec = counted.iter().collect::<Vec<(&char, &i32)>>();
+    let mut count_vec: Vec<(&char, &i32)> = counted.iter().collect();
     count_vec.sort_by(|a, b| b.1.cmp(a.1));
-    count_vec.iter().for_each(|(c, x)| println!("{}:{}", c, x));
+    count_vec.iter().for_each(|(c, x)| println!("{}: {}", c, x));
 }
 
-// Create a list of all wordlewords that may be the goal words
+// WordleGame Struct and Implementation
 struct WordleGame {
     word_set: HashSet<&'static str>,
 }
 
 impl WordleGame {
     pub fn new() -> Self {
-        let mut all: HashSet<&'static str> = HashSet::new();
-
-        for w in goalwords::GOALWORDS {
-            all.insert(w);
-        }
-	
-        //for w in morewords::MOREWORDS {
-        //    all.insert(w);
-        //}
-
+        let all: HashSet<&'static str> = goalwords::GOALWORDS.iter().cloned().collect();
         Self { word_set: all }
     }
 
-    // Compare two words, and return how good the guess is relative to the goal.
-    // Output is a string of five letters
-    // ' ' means the guess is not in the goal word
-    // 'Y' means the guess letter is in the goal word, but not in the right location.
-    // 'G' means the guess letter is in the right location in the goal word.
     fn compare_words(goal: &str, guess: &str) -> String {
-        let mut s: [char; 5] = [' ', ' ', ' ', ' ', ' '];
-
+        let mut feedback_result = [' '; 5];
         let mut goal_chars: Vec<char> = goal.chars().collect();
         let guess_chars: Vec<char> = guess.chars().collect();
 
-        // First pass. Mark the correct letters with a 'G'
         for i in 0..5 {
             if goal_chars[i] == guess_chars[i] {
-                s[i] = 'G';
-                goal_chars[i] = ' ' // Clear out this character so we don't match it again.
+                feedback_result[i] = 'G';
+                goal_chars[i] = ' ';
             }
         }
 
-        // Second pass... Mark the guess letters that exist in the goal word but not in the right spot
-        // as 'Y'
         for i in 0..5 {
-            if s[i] == ' ' {
-                let found = goal_chars.iter().enumerate().find_map(|(j, c)| {
-                    if *c == guess_chars[i] {
-                        Some(j)
-                    } else {
-                        None
-                    }
-                });
-                if let Some(j) = found {
-                    s[i] = 'Y';
-                    goal_chars[j] = ' ';
+            if feedback_result[i] == ' ' {
+                if let Some(pos) = goal_chars.iter().position(|&c| c == guess_chars[i]) {
+                    feedback_result[i] = 'Y';
+                    goal_chars[pos] = ' ';
                 }
             }
         }
 
-        s.iter().collect()
+        feedback_result.iter().collect()
     }
 
-    // Given a set of possible answer words,
-    // return a word that is the best guess to find the correct answer.
-    // Return the score for that word as an f64.
-    fn score(&self) -> (f64, String) {
-        let word_set_count: f64 = self.word_set.len() as f64;
-        println!("Word set count: {}", word_set_count);
-
-        let mut max_score: f64 = 0.0;
-        let mut max_fscore: f64 = 0.0;
-        let mut max_word = String::from("");
-        let min_of_max: usize = 10000;
-
-        let all_words = goalwords::GOALWORDS
-            .iter()
-            .chain(morewords::MOREWORDS.iter());
-
-        for possible_guess in all_words {
-            // Calculate the clue sets and their size.
-            let counted = &self
-                .word_set
-                .iter()
-                .fold(HashMap::new(), |mut acc, possible_goal| {
-                    *acc.entry(WordleGame::compare_words(possible_goal, possible_guess))
-                        .or_insert(0) += 1;
-                    acc
-                });
-
-            // Given the clue set, Calculate the Shannon entropy.
-            let fscore: f64 = counted
-                .iter()
-                .map(|(_key, value)| {
-                    let v_c: f64 = f64::from(*value);
-                    let f = word_set_count / v_c;
-                    v_c * f.ln()
-                })
-                .sum::<f64>()
-                / word_set_count;
-
-            // Given a clue set, calculate it's size
-            let word_count: f64 = counted.len() as f64;
-
-            if (fscore == max_fscore && word_count > max_score)
-                || (fscore == max_fscore
-                    && word_count == max_score
-                    && self.word_set.contains(possible_guess))
-                || (fscore > max_fscore)
-            {
-                max_word = possible_guess.to_string();
-                max_score = word_count;
-                max_fscore = fscore;
-            }
-        }
-
-	    let trailer = String::from_iter( self.word_set.iter().take(5).map(|&s| s));
-
-        println!(
-            "Guess... {}, {} {} {} {}",
-            max_word, max_score, max_fscore, min_of_max, trailer
-        );
-
-        if max_score == 1.0 {
-            max_fscore = 10.0
-        }
-
-        (max_fscore, max_word)
-    }
-
-    // Given a set of possible answer words.
-    // Remove the words that don't match the given guess and it's associated clue.
-    fn remove_static(word_set: &mut HashSet<&'static str>, guess: &str, clue: &str) {
-        let guess_chars: Vec<char> = guess.chars().collect();
-        let clue_chars: Vec<char> = clue.chars().collect();
-        let mut remove_set = HashSet::new();
-
-        for word in word_set.iter() {
-            let mut word_chars: Vec<char> = word.chars().collect();
-            let mut remove = false;
-
-            for i in 0..5 {
-                if clue_chars[i] == 'G' {
-                    if guess_chars[i] == word_chars[i] {
-                        word_chars[i] = ' '; // Don't match this letter again
-                    } else {
-                        // Remove words where the clue is green, but the letters don't match
-                        remove = true;
-                    }
-                }
-
-                if remove {
-                    break;
-                }
-            }
-
-            if !remove {
-                for i in 0..5 {
-                    if clue_chars[i] == 'Y' {
-                        if guess_chars[i] == word_chars[i] {
-                            // This should have been a 'G'
-                            remove = true;
-                            break;
-                        }
-
-                        // If the clue is Y then search for that letter.
-                        // For Y, valid matches only happen when the match is not in the same position.
-                        let found = word_chars.iter().enumerate().find_map(|(j, c)| {
-                            if *c == guess_chars[i] {
-                                Some(j)
-                            } else {
-                                None
-                            }
-                        });
-
-                        if let Some(j) = found {
-                            if j != i {
-                                word_chars[j] = ' '; // Don't match this letter again.
-                            } else {
-                                remove = true; // This clue should have been 'G'
-                            }
-                        } else {
-                            remove = true; // Didn't find the matching letter.
-                        }
-                    }
-
-                    if remove {
-                        break;
-                    }
-                }
-            }
-
-            if !remove {
-                for i in 0..5 {
-                    if clue_chars[i] == ' ' {
-                        // If the clue is ' ' then that guess letter must not exist in the target.
-                        let found = word_chars.iter().enumerate().find_map(|(j, c)| {
-                            if *c == guess_chars[i] {
-                                Some(j)
-                            } else {
-                                None
-                            }
-                        });
-
-                        if let Some(_j) = found {
-                            remove = true;
-                        }
-
-                        if remove {
-                            break;
-                        }
-                    }
-                }
-            }
-
-            if remove {
-                remove_set.insert(*word);
-            }
-        }
-
-        for removeable in &remove_set {
-            word_set.remove(removeable);
-        }
-    }
-
-    // Wrapper to call remove from a WordleGame object.
-    fn remove(&mut self, guess: &str, clue: &str) {
-        WordleGame::remove_static(&mut self.word_set, guess, clue);
-    } // fn remove
-
-    fn play_quordle() {
-        let mut quordle: Vec<WordleGame> = Vec::new();
-        quordle.push(WordleGame::new());
-        quordle.push(WordleGame::new());
-        quordle.push(WordleGame::new());
-        quordle.push(WordleGame::new());
-
-        //
-        let mut recommend = String::from("slate");
-        println!("Guess... slate");
-
-        loop {
-            let mut clue = String::new();
-
-            println!("Enter csv clues...");
-            io::stdin()
-                .read_line(&mut clue)
-                .expect("Failed to read line");
-
-            clue.push_str(",,,,");
-            let clues: Vec<&str> = clue.split(',').collect();
-
-            for i in 0..=3 {
-                if clues[i].len() > 0 {
-                    quordle[i].remove(&recommend, clues[i]);
-                }
-            }
-
-            let mut max_score: f64 = 0.0;
-            let mut best_word: String = String::new();
-            let mut f_next_score: f64;
-            let mut f_next_word;
-
-            for i in 0..=3 {
-                if clues[i].len() > 0 {
-                    (f_next_score, f_next_word) = quordle[i].score();
-
-                    if f_next_score > max_score {
-                        max_score = f_next_score;
-                        best_word = f_next_word;
-                    }
-                }
-            }
-
-            println!("Recommended: {}", best_word);
-            recommend = best_word;
-        } //loop
-
-        //
-    } //fn play_quordle
-}
-
-fn main() {
-    env::set_var("RUST_BACKTRACE", "1");
-
-    let args: Vec<String> = env::args().collect();
-
-    if args[1] == *"map" {
-        println!("Words, sets, complex, max");
-        for guess in goalwords::GOALWORDS {
-            let counted = goalwords::GOALWORDS
-                .iter()
-                .fold(HashMap::new(), |mut acc, goal| {
-                    *acc.entry(WordleGame::compare_words(goal, guess))
-                        .or_insert(0) += 1;
-                    acc
-                });
-
-            let max = counted.values().max();
-            let set_count = counted.iter().fold(
-                0,
-                |acc, (_key, value)| if *value > 1 { acc + 1 } else { acc },
-            );
-
-            println!(
-                "{}, {}, {}, {}",
-                guess,
-                counted.len(),
-                set_count,
-                max.unwrap()
-            );
-        }
-    }
-
-    if args[1] == *"log" {
-        println!("Words, score");
-        let all_words = goalwords::GOALWORDS
-            .iter()
-            .chain(morewords::MOREWORDS.iter());
-        let _all_words_count: f64 = all_words.count() as f64;
-
-        let all_words = goalwords::GOALWORDS
-            .iter()
-            .chain(morewords::MOREWORDS.iter());
-
-        let goal_words = HashSet::from(["crack", "crazy", "cramp"]);
-        let goal_words_count: f64 = goal_words.len() as f64;
-        for guess in all_words {
-            let counted = goal_words.iter().fold(HashMap::new(), |mut acc, goal| {
-                *acc.entry(WordleGame::compare_words(goal, guess))
-                    .or_insert(0) += 1;
-                acc
-            });
-
-            // Calculate the Shannon entropy of this guess word.
-            let score: f64 = counted
-                .values()
-                .map(|value| {
-                    let v_c: f64 = f64::from(*value);
-                    let f = v_c / goal_words_count;
-                    v_c * f.ln()
-                })
-                .sum::<f64>()
-                / goal_words_count;
-
-            println!("{}, {}", guess, -score);
-        }
-    }
-
-    if args[1] == *"play" {
-        WordleGame::play_quordle();
-    }
-
-    if args[1] == *"deep" {
-        let mut all = HashMap::new();
-        let all_words = goalwords::GOALWORDS
-            .iter()
-            .chain(morewords::MOREWORDS.iter());
-        for guess1 in all_words {
-            println!("{}", guess1);
-            let all_words2 = goalwords::GOALWORDS
-                .iter()
-                .chain(morewords::MOREWORDS.iter());
-            for guess2 in all_words2 {
-                let mut counted = HashMap::new();
-                for goal in goalwords::GOALWORDS {
-                    let filter1 = WordleGame::compare_words(goal, guess1);
-                    let filter2 = WordleGame::compare_words(goal, guess2);
-                    let mut filter = String::new();
-                    filter.push_str(&filter1);
-                    filter.push_str(&filter2);
-                    //println!("{}", filter);
-                    *counted.entry(filter).or_insert(0) += 1;
-                }
-
-                let mut wordpair = String::new();
-                wordpair.push_str(guess1);
-                wordpair.push_str(guess2);
-                if counted.len() > 1000 {
-                    println!("{} {}", wordpair, counted.len());
-                    all.insert(wordpair, counted.len());
-                }
-            }
-        }
-
-        let mut count_vec = all.iter().collect::<Vec<(&String, &usize)>>();
-        count_vec.sort_by(|(_, i1), (_, i2)| i1.cmp(i2));
-        count_vec.iter().for_each(|(s, i)| println!("{}:{}", s, i));
-    }
-
-    if args[1] == *"scan" {
-        let first_word = String::from(&args[2]);
-
-        let mut counted = HashMap::new();
-
-        for goal in goalwords::GOALWORDS {
-            let filter = WordleGame::compare_words(goal, &first_word);
-            *counted.entry(filter).or_insert(0) += 1;
-        }
-
-        let mut count_vec = counted.iter().collect::<Vec<(&String, &usize)>>();
-        count_vec.sort_by(|(_, i1), (_, i2)| i1.cmp(i2));
-        count_vec.iter().for_each(|(s, i)| println!("{}:{}", s, i));
-    }
-}
-
-#[test]
-fn it_works() {
-    let s = WordleGame::compare_words("stern", "sueat");
-    assert_eq!(s, String::from("G G Y"));
-
-    let s = WordleGame::compare_words("stern", "clamp");
-    assert_eq!(s, String::from("     "));
-
-    let s = WordleGame::compare_words("stern", "stern");
-    assert_eq!(s, String::from("GGGGG"));
-
-    let s = WordleGame::compare_words("stern", "clamp");
-    assert_eq!(s, String::from("     "));
-
-    let s = WordleGame::compare_words("abcde", "edcba");
-    assert_eq!(s, String::from("YYGYY"));
-}
-
-#[test]
-fn remote_test() {
-    let mut a = HashSet::from(["abcde", "abcdf", "abcdg"]);
-
-    for word in a.iter() {
-        println!("in {}", word);
-    }
-
-    WordleGame::remove_static(&mut a, "iiiig", "    G");
-
-    for word in a.iter() {
-        println!("after {}", word);
-    }
-
-    assert_eq!(a.contains("abcdg"), true);
-    assert_eq!(a.contains("abcdf"), false);
-}
-
-#[test]
-fn y_test() {
-    let mut a = HashSet::from(["abcde", "fbcdf", "abcdg"]);
-
-    WordleGame::remove_static(&mut a, "iifii", "  Y  ");
-
-    assert_eq!(a.contains("fbcdf"), true);
-    assert_eq!(a.contains("abcdg"), false);
-}
-
-#[test]
-fn gy_test() {
-    let mut a = HashSet::from(["abcae", "fbcdf", "abadg", "aiiba"]);
-
-    WordleGame::remove_static(&mut a, "aiiia", "G   Y");
-
-    assert_eq!(a.contains("fbcdf"), false);
-    assert_eq!(a.contains("abcae"), true);
-    assert_eq!(a.contains("abadg"), true);
-    assert_eq!(a.contains("aiiba"), false);
-}
-
-#[test]
-fn ggg_test() {
-    let mut a = HashSet::from(["crack", "cramp"]);
-
-    WordleGame::remove_static(&mut a, "crack", "GGG  ");
-
-    assert_eq!(a.contains("crack"), false);
-    assert_eq!(a.contains("cramp"), true);
-}
-
-#[test]
-fn soare_await_test() {
-    let a = WordleGame::compare_words("await", "soare");
-    assert_eq!(a.eq("  G  "), true);
-}
-
-#[test]
-fn soare_await_test2() {
-    let mut b = HashSet::<&str>::new();
-    b.insert("await");
-    b.insert("admit");
-    b.insert("avail");
-
-    WordleGame::remove_static(&mut b, "soare", "  Y  ");
-    assert_eq!(b.contains("admit"), true);
-    assert_eq!(b.contains("await"), false);
-}
-
-#[test]
-fn big_soare_test() {
-    let str_await = String::from("await");
-    let str_admit = String::from("admit");
-
-    let mut word_set = goalwords::GOALWORDS
-        .iter()
-        .skip_while(|x| !str_await.eq(*x) && !str_admit.eq(*x))
-        .fold(HashSet::<&str>::new(), |mut acc, word| {
-            acc.insert(word);
+    fn calculate_entropy(&self, guess: &str) -> (f64, usize) {
+        let clue_counts = self.word_set.iter().fold(HashMap::new(), |mut acc, goal| {
+            *acc.entry(Self::compare_words(goal, guess)).or_insert(0) += 1;
             acc
         });
 
-    WordleGame::remove_static(&mut word_set, "soare", "  Y  ");
+        let word_set_count = self.word_set.len() as f64;
+        let entropy: f64 = clue_counts
+            .values()
+            .map(|&count| {
+                let probability = count as f64 / word_set_count;
+                -probability * probability.ln()
+            })
+            .sum();
 
-    assert_eq!(word_set.contains("admit"), true);
-    assert_eq!(word_set.contains("await"), false);
+        (entropy, clue_counts.len())
+    }
+
+    fn find_best_guess(&self) -> String {
+        let mut best_word = "";
+        let mut highest_entropy = 0.0;
+
+        for &guess in goalwords::GOALWORDS.iter().chain(morewords::MOREWORDS.iter()) {
+            let (entropy, _) = self.calculate_entropy(guess);
+            if entropy > highest_entropy {
+                highest_entropy = entropy;
+                best_word = guess;
+            }
+        }
+
+        best_word.to_string()
+    }
+
+    fn remove_invalid_words(&mut self, guess: &str, clue: &str) {
+        let guess_chars: Vec<char> = guess.chars().collect();
+        let clue_chars: Vec<char> = clue.chars().collect();
+        self.word_set.retain(|&word| {
+            let mut word_chars: Vec<char> = word.chars().collect();
+
+            for i in 0..5 {
+                match clue_chars[i] {
+                    'G' if guess_chars[i] != word_chars[i] => return false,
+                    'Y' if guess_chars[i] == word_chars[i] => return false,
+                    ' ' if word_chars.contains(&guess_chars[i]) => return false,
+                    _ => (),
+                }
+            }
+
+            true
+        });
+    }
+}
+
+// Main Program Flow
+fn main() {
+    env::set_var("RUST_BACKTRACE", "1");
+    let args: Vec<String> = env::args().collect();
+
+    match args.get(1).map(String::as_str) {
+        Some("play") => play_quordle(),
+        _ => println!("Invalid command. Use 'play' for Quordle mode."),
+    }
+}
+
+fn play_quordle() {
+    let mut games: Vec<WordleGame> = vec![WordleGame::new(); 4];
+
+    loop {
+        let current_guess = read_input("Enter your current guess:");
+        let feedback = read_input("Enter feedback for each game (comma-separated):");
+        let clues: Vec<&str> = feedback.split(',').collect();
+
+        for (i, game) in games.iter_mut().enumerate() {
+            if let Some(&clue) = clues.get(i) {
+                game.remove_invalid_words(&current_guess, clue);
+            }
+        }
+
+        let recommended_guess = games
+            .iter()
+            .map(|game| game.find_best_guess())
+            .max_by(|a, b| a.len().cmp(&b.len()))
+            .unwrap_or_else(|| "error".to_string());
+
+        println!("Recommended next guess: {}", recommended_guess);
+    }
 }
